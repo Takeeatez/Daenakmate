@@ -1,0 +1,12 @@
+import{readFileSync,writeFileSync}from'node:fs';
+let q=readFileSync('web/quick-apply.js','utf8');
+q=q.replace("'<p class=\"notice\">필요한 설정: '+esc((liveConfig?.missing||[]).join(', ')||'신규 접수 열기')+'</p><button", "'<div class=\"quick-setup-list\"><b>접수를 열기 위해 필요한 정보</b><ul>'+((liveConfig?.missing?.length?liveConfig.missing:['신규 접수 열기']).map(label=>'<li>'+esc(label)+'</li>').join(''))+'</ul></div><button");
+q=q.replace('<p id="quick-description" class="quick-intro">신청 → 계좌이체 → 입금 확인 → 담당자 안내</p>','<p id="quick-description" class="quick-intro">신청 정보를 입력하고, 최종 금액을 확인해주세요.</p>');
+q=q.replace('<div class="quick-identity">신청 정보는 서버에 저장되며 내 계정에서 조회할 수 있어요.</div><div class="quick-two">','<section class="quick-block"><h3 class="quick-section-title"><span>1</span> 신청자 정보</h3><p class="quick-section-help">입금 확인과 진행 안내에 사용합니다.</p><div class="quick-two">');
+q=q.replace('placeholder="실제 입금자명"','placeholder="입금하실 분의 이름"');
+q=q.replace('</div><div class="notice one-time-notice"><b>일회용 로그인으로 진행합니다.</b><br>게임 비밀번호·2차 비밀번호·인증 번호를 신청서에 입력하지 마세요. 접속 인증은 담당자 안내를 확인해주세요.</div><fieldset class="quick-fieldset"><legend>서비스 선택</legend>','</div></section><section class="quick-block"><h3 class="quick-section-title"><span>2</span> 서비스 선택</h3><fieldset class="quick-fieldset"><legend class="sr-only">서비스 선택</legend>');
+q=q.replace('</div></fieldset><div class="quick-two quick-options">','</div></fieldset><details class="quick-login-help"><summary>일회용 로그인으로 진행해요 <span>자세히</span></summary><p>게임 비밀번호·2차 비밀번호·인증 번호를 신청서에 입력하지 마세요. 접속 인증은 담당자의 안내에 따라 진행합니다.</p></details></section><section class="quick-block"><h3 class="quick-section-title"><span>3</span> 수령 옵션</h3><div class="quick-two quick-options">');
+q=q.replace('<div class="quick-help">모두받기 기준 · 선별 수령 불가 · 입금 전 신청 조건을 확인해주세요.</div>','<p class="quick-section-help option-help">판매 완료 항목을 모두 수령합니다. 선별 수령은 지원하지 않아요.</p>');
+q=q.replace('<small>이름·연락처는 저장하지 않아요.</small></div><div class="quick-policies">','<small>이름·연락처는 저장하지 않아요.</small></div></section><section class="quick-block quick-agreements"><h3 class="quick-section-title"><span>4</span> 신청 전 확인</h3><div class="quick-policies">');
+q=q.replace('신청 처리를 위한 개인정보 수집·이용에 동의합니다.</b></span></label></div><div class="quick-footer">','신청 처리를 위한 개인정보 수집·이용에 동의합니다.</b></span></label></section></div><div class="quick-footer">');
+writeFileSync('web/quick-apply.js',q);

@@ -1,0 +1,14 @@
+import{readFileSync,writeFileSync}from'node:fs';let t=readFileSync('scripts/live-check.mjs','utf8');const marker="console.log('PASS:";const i=t.indexOf(marker);t=t.slice(0,i)+`assert.equal((await call(null,'/api/admin/members')).status,401);
+assert.equal((await call('customer','/api/admin/members')).status,403);
+const strangerOrder=await call('stranger','/api/orders','POST',{...request,name:'다른 회원',phone:'01099999999',requestKey:crypto.randomUUID(),policyVersion:1});assert.equal(strangerOrder.status,201);
+const members=await call('operator','/api/admin/members');assert.equal(members.status,200);assert.equal(members.data.total,2);assert.equal(members.data.summary.members,2);assert.equal(members.data.summary.orders,3);assert.equal(members.data.summary.activeMembers,1);
+const member=members.data.members.find(m=>m.userId==='customer-1');assert.equal(member.orderCount,2);assert.equal(member.completedCount,1);assert.equal(member.completedAmount,1500);assert.equal(member.activeCount,0);
+assert.equal((await call('owner','/api/admin/members?q='+encodeURIComponent('다른 회원'))).data.total,1);
+assert.equal((await call('owner','/api/admin/members?q=customer%40example.test')).data.members[0].userId,'customer-1');
+assert.equal((await call('owner','/api/admin/members?q=01099999999')).data.total,1);
+assert.equal((await call('owner','/api/admin/members?q=%25__')).data.total,0);
+assert.equal((await call('owner','/api/admin/members?offset=1')).data.members.length,1);
+assert.equal((await call('owner','/api/admin/members?offset=-1')).status,400);
+const filtered=await call('owner','/api/admin/orders?customerId=customer-1');assert.equal(filtered.data.orders.length,2);assert.ok(filtered.data.orders.every(o=>o.name==='입금 테스트'));
+assert.equal((await call('customer','/api/admin/orders?customerId=stranger-1')).status,403);
+`+t.slice(i);writeFileSync('scripts/live-check.mjs',t);

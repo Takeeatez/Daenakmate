@@ -1,0 +1,14 @@
+{
+  "name": "daenakmate",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/preview.mjs",
+    "test": "node scripts/test-all.mjs"
+  },
+  "description": "FC ONLINE 대낙 신청 및 운영 관리 서비스",
+  "engines": {
+    "node": ">=22"
+  }
+}

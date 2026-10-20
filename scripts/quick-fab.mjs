@@ -1,0 +1,1 @@
+import{readFileSync,writeFileSync}from'node:fs';let html=readFileSync('web/index.html','utf8');html=html.replace('<div id="toast"','<button class="quick-fab" data-view="apply"><svg class="football-icon" aria-hidden="true"><use href="#i-ball"/></svg>대낙 빠른 신청<span>↗</span></button><div id="toast"');writeFileSync('web/index.html',html);

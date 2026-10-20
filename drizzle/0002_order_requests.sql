@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN requests TEXT NOT NULL DEFAULT '';

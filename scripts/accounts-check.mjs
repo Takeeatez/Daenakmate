@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import{mkdtempSync,rmSync}from'node:fs';import{join,resolve}from'node:path';import{tmpdir}from'node:os';
+import{TestDB}from'./test-db.mjs';import{handleApi,defaults}from'../server/api.mjs';
+const dir=mkdtempSync(join(tmpdir(),'mate-account-')),db=new TestDB(join(dir,'db.sqlite')),env={DB:db,OWNER_EMAIL:'owner@example.test'};
+db.execute([],resolve('drizzle/0000_live_orders.sql'));db.execute([],resolve('drizzle/0001_members_guests.sql'));
+db.execute([],resolve('drizzle/0002_order_requests.sql'));
+db.execute([],resolve('drizzle/0003_secure_connections.sql'));
+async function call(path,method='GET',data,cookie='',owner=false){const headers={};if(cookie)headers.cookie=cookie;if(owner){headers['oai-authenticated-user-id']='owner-site';headers['oai-authenticated-user-email']='owner@example.test'}if(method!=='GET'){headers.origin='https://mate.test';headers['content-type']='application/json'}const r=await handleApi(new Request('https://mate.test'+path,{method,headers,...(data?{body:JSON.stringify(data)}:{})}),env);return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]||'',setCookie:r.headers.get('set-cookie')||''}}
+const signup={email:'customer@example.test',password:'Test-only-password-123!',name:'가입 테스트',consent:true,policyVersion:1};
+try{
+assert.equal((await call('/api/auth/register','POST',signup)).status,409);
+const config={...defaults,terms:'테스트 약관',privacy:'테스트 개인정보 안내',refund:'테스트 환불',pricingConfirmed:true,acceptingOrders:true,supportContact:'테스트',hours:'12–22',bankName:'테스트 은행',bankAccount:'000',bankHolder:'테스트'};delete config.version;db.execute([{sql:'INSERT INTO shop_settings (id,data,version,updated_at) VALUES (1,?,1,?)',args:[JSON.stringify(config),new Date().toISOString()]}]);
+const registered=await call('/api/auth/register','POST',signup);assert.equal(registered.status,201);assert.ok(registered.setCookie.includes('HttpOnly'));assert.ok(registered.setCookie.includes('Secure'));assert.ok(registered.setCookie.includes('SameSite=Lax'));assert.equal(registered.data.user.provider,'local');assert.equal(registered.data.user.isAdmin,false);
+const stored=await db.prepare('SELECT * FROM members WHERE email = ?').bind(signup.email).first();assert.notEqual(stored.password_hash,signup.password);assert.equal(stored.password_hash.length,64);assert.equal('password_hash'in registered.data.user,false);
+assert.equal((await call('/api/auth/register','POST',signup)).status,409);
+assert.equal((await call('/api/auth/login','POST',{email:signup.email,password:'incorrect'})).status,401);
+const login=await call('/api/auth/login','POST',{email:signup.email,password:signup.password});assert.equal(login.status,200);assert.equal((await call('/api/me','GET',null,login.cookie)).data.user.id,stored.id);
+assert.ok(!login.setCookie.includes('Max-Age='));
+const remembered=await call('/api/auth/login','POST',{email:signup.email,password:signup.password,remember:true});assert.equal(remembered.status,200);assert.ok(remembered.setCookie.includes('Max-Age=2592000'));assert.equal((await call('/api/me','GET',null,remembered.cookie)).data.user.id,stored.id);
+const sessions=await db.prepare('SELECT expires_at FROM auth_sessions WHERE member_id = ?').bind(stored.id).all();assert.ok(sessions.results.some(s=>Date.parse(s.expires_at)-Date.now()>29*86400000));assert.ok(sessions.results.some(s=>Date.parse(s.expires_at)-Date.now()<86400001));
+assert.equal((await call('/api/auth/logout','POST',{},remembered.cookie)).status,200);assert.equal((await call('/api/me','GET',null,remembered.cookie)).data.user,null);
+const spoof=await call('/api/auth/register','POST',{...signup,email:'owner@example.test'});assert.equal(spoof.status,201);assert.equal((await call('/api/me','GET',null,spoof.cookie)).data.user.isOwner,false);assert.equal((await call('/api/settings','GET',null,spoof.cookie)).status,403);assert.equal((await call('/api/admin/members','GET',null,spoof.cookie)).status,403);
+const orderData={requestKey:crypto.randomUUID(),name:'실행 테스트',phone:'010-1234-5678',requests:'입금 후 연락 부탁드립니다.\n<요청 내용>',login:'once',service:'basic',coupon:'none',top:'yes',consent:true,policyVersion:1};
+const memberOrder=await call('/api/orders','POST',orderData,login.cookie);assert.equal(memberOrder.status,201);assert.equal(memberOrder.data.order.requests,orderData.requests);assert.equal((await call('/api/orders','GET',null,login.cookie)).data.orders[0].requests,orderData.requests);assert.equal((await call('/api/orders','POST',{...orderData,requestKey:crypto.randomUUID(),requests:'가'.repeat(501)},login.cookie)).status,400);
+const guestData={...orderData,requestKey:crypto.randomUUID(),lookupPassword:'Guest-only-password-123!'};
+assert.equal((await call('/api/guest/orders','POST',{...guestData,lookupPassword:'short'})).status,400);
+const guest=await call('/api/guest/orders','POST',guestData);assert.equal(guest.status,201);assert.equal(guest.data.order.customerType,'guest');assert.ok(guest.cookie.startsWith('__Host-dm_guest='));const guestId=guest.data.order.id;
+const guestRow=await db.prepare('SELECT * FROM orders WHERE id = ?').bind(guestId).first();assert.notEqual(guestRow.guest_password_hash,guestData.lookupPassword);assert.equal(guestRow.customer_email,'');assert.equal(guestRow.requests,guestData.requests);assert.equal(guest.data.order.requests,guestData.requests);assert.equal((await call('/api/guest/orders','POST',{...guestData,requestKey:crypto.randomUUID(),requests:'가'.repeat(501)})).status,400);
+const duplicate=await call('/api/guest/orders','POST',guestData);assert.equal(duplicate.data.order.id,guestId);
+assert.equal((await call('/api/guest/order')).status,401);
+assert.equal((await call('/api/guest/order','GET',null,guest.cookie)).data.order.id,guestId);
+assert.equal((await call('/api/guest/lookup','POST',{orderId:guestId,lookupPassword:'wrong'})).status,401);
+assert.equal((await call('/api/admin/orders','GET',null,'',true)).data.orders.find(o=>o.id===guestId).requests,guestData.requests);
+const lookup=await call('/api/guest/lookup','POST',{orderId:guestId,lookupPassword:guestData.lookupPassword});assert.equal(lookup.status,200);
+assert.equal((await call('/api/orders/'+guestId,'PATCH',{action:'report_payment',version:0})).status,401);
+assert.equal((await call('/api/orders/'+guestId,'PATCH',{action:'report_payment',version:0},lookup.cookie)).status,200);
+assert.equal((await call('/api/orders/'+guestId,'PATCH',{action:'cancel',version:1},lookup.cookie)).data.order.status,'cancelled');
+assert.equal((await call('/api/orders','GET',null,login.cookie)).data.orders.length,1);
+const roster=await call('/api/admin/members','GET',null,'',true);assert.equal(roster.status,200);assert.equal(roster.data.total,2);assert.equal(roster.data.summary.orders,1);assert.equal(roster.data.members.some(m=>m.userId.startsWith('G-')),false);
+const mixedCookie=login.cookie+'; '+guest.cookie;assert.equal((await call('/api/me','GET',null,mixedCookie)).data.user.id,stored.id);
+assert.equal((await call('/api/auth/logout','POST',{},login.cookie)).status,200);assert.equal((await call('/api/me','GET',null,login.cookie)).data.user,null);
+assert.equal((await call('/api/admin/orders','GET',null,'',true)).data.orders.filter(o=>o.customerType==='guest').length,1);
+console.log('PASS: email signup/login, hashed passwords, secure cookies, protected operator roles, guest idempotency, password lookup, scoped guest actions, mixed sessions, logout and member/guest separation.');
+}finally{const absolute=resolve(dir);assert.ok(absolute.startsWith(resolve(tmpdir()))&&absolute.includes('mate-account-'));rmSync(absolute,{recursive:true,force:true})}

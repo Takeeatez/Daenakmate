@@ -1,5 +1,8 @@
 <div align="center">
-  <img src="web/daenak-mate-header.svg" width="320" alt="대낙메이트">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/daenak-mate-logo-white.svg">
+    <img src="web/daenak-mate-header.svg" width="320" alt="대낙메이트">
+  </picture>
   <h1>Daenakmate</h1>
   <p><strong>FC ONLINE PC방 대낙 신청 · 회원 관리 · 운영 관리</strong></p>
   <p>
